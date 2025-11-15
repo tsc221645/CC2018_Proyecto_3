@@ -28,6 +28,12 @@ impl Scene {
             "src/models/ship.obj",
             //3
             "src/models/mini_planeta_2.obj",
+            //4
+            "src/models/mini_planeta_3.obj",
+            //5
+            "src/models/huevo_planeta.obj",
+            //6
+            "src/models/luna.obj",
         ];
 
         let mut models = Vec::new();
@@ -62,9 +68,11 @@ impl Scene {
 
         // ⭐ órbitas independientes
         let orbits = vec![
-            Scene::make_orbit(6.0),   // órbita del planeta 1
-            Scene::make_orbit(12.0),  // órbita planeta 2 / nave si quieres
-            Scene::make_orbit(20.0),  // órbita extra
+              // órbita del planeta 1
+            Scene::make_orbit(12.0),  //orbita planeta 1
+            Scene::make_orbit(40.0),  // orbita planeta 2
+            Scene::make_orbit(60.0),  // orbita planeta 3
+            Scene::make_orbit(75.0),  // orbita planeta huevo
         ];
 
         Self {
@@ -85,12 +93,9 @@ impl Scene {
             .collect()
     }
 
-    /// 🔥 ANIMAR planetas aquí mismo, sin tocar renderer ni shaders
     pub fn update(&mut self, time: f32, queue: &wgpu::Queue) {
 
-        // ============================================================
-        // ⭐ PLANETA 1 ORBITANDO
-        // ============================================================
+        //planeta 1 -----------------------------------------------------------
         let radius = 12.0;
         let angle = time * 0.3;
         let ox = angle.cos() * radius;
@@ -110,16 +115,20 @@ impl Scene {
             bytemuck::cast_slice(&self.dynamic_vertices[1]),
         );
 
-        // ============================================================
-        // ⭐ NAVE MOVIENDO EN ONDA (ejemplo)
-        // ============================================================
-        let lift = (time * 1.5).sin() * 1.5;
+        
+        // nave 2 -----------------------------------------------------------
+        let radius4 = 30.0;
+        let a4 = time * 0.09;
+
+        let ox2 = a4.cos() * radius4;
+        let oz2 = a4.sin() * radius4;
 
         for (orig, dynv) in self.original_vertices[2]
             .iter()
             .zip(self.dynamic_vertices[2].iter_mut())
         {
-            dynv.pos[1] = orig.pos[1] + lift;
+            dynv.pos[0] = orig.pos[0] + ox2;
+            dynv.pos[2] = orig.pos[2] + oz2;
         }
 
         queue.write_buffer(
@@ -127,7 +136,9 @@ impl Scene {
             0,
             bytemuck::cast_slice(&self.dynamic_vertices[2]),
         );
-
+        
+       
+        // planeta 2 -----------------------------------------------------------
         let radius4 = 40.0;
         let a4 = time * 0.09;
 
@@ -146,6 +157,48 @@ impl Scene {
             &self.models[3].vb,
             0,
             bytemuck::cast_slice(&self.dynamic_vertices[3]),
+        );
+
+        // planeta 3 -----------------------------------------------------------
+        let radius4 = 60.0;
+        let a4 = time * 0.09;
+
+        let ox4 = a4.cos() * radius4;
+        let oz4 = a4.sin() * radius4;
+
+        for (orig, dynv) in self.original_vertices[4]
+            .iter()
+            .zip(self.dynamic_vertices[4].iter_mut())
+        {
+            dynv.pos[0] = orig.pos[0] + ox4;
+            dynv.pos[2] = orig.pos[2] + oz4;
+        }
+
+        queue.write_buffer(
+            &self.models[4].vb,
+            0,
+            bytemuck::cast_slice(&self.dynamic_vertices[4]),
+        );
+
+        // planeta huevo  -----------------------------------------------------------
+        let radius4 = 75.0;
+        let a4 = time * 0.09;
+
+        let ox5 = a4.cos() * radius4;
+        let oz5 = a4.sin() * radius4;
+
+        for (orig, dynv) in self.original_vertices[5]
+            .iter()
+            .zip(self.dynamic_vertices[5].iter_mut())
+        {
+            dynv.pos[0] = orig.pos[0] + ox5;
+            dynv.pos[2] = orig.pos[2] + oz5;
+        }
+
+        queue.write_buffer(
+            &self.models[5].vb,
+            0,
+            bytemuck::cast_slice(&self.dynamic_vertices[5]),
         );
     }
 }

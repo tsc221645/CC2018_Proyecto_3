@@ -69,9 +69,10 @@ async fn run() {
                     mouse_delta += Vec2::new(delta.0 as f32, delta.1 as f32);
                 }
                 DeviceEvent::MouseWheel { delta } => {
+                    let zoom_speed = 0.15; 
                     let scroll = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y,
-                        MouseScrollDelta::PixelDelta(p) => p.y as f32 / 20.0,
+                        MouseScrollDelta::LineDelta(_, y) => y * zoom_speed,
+                        MouseScrollDelta::PixelDelta(p) => (p.y as f32) * zoom_speed,
                     };
                     cam.radius = (cam.radius - scroll).clamp(3.0, 500.0);
                 }
