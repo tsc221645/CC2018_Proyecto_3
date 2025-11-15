@@ -13,3 +13,5 @@ El proyecto consiste en realizar una simulación del sistema solar utilizando un
 
 
 ### Capturas de pantalla
+Primera version del render
+![alt text](image.png)
