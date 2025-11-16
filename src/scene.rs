@@ -25,7 +25,7 @@ impl Scene {
             // 1
             "src/models/mini_planeta_1.obj",
             // 2
-            "src/models/ship.obj",
+            "src/models/nave.obj",
             //3
             "src/models/mini_planeta_2.obj",
             //4
@@ -116,6 +116,8 @@ impl Scene {
         );
 
         
+
+        
         // nave 2 -----------------------------------------------------------
         let radius4 = 30.0;
         let a4 = time * 0.09;
@@ -140,7 +142,7 @@ impl Scene {
        
         // planeta 2 -----------------------------------------------------------
         let radius4 = 40.0;
-        let a4 = time * 0.09;
+        let a4 = time * 0.03;
 
         let ox3 = a4.cos() * radius4;
         let oz3 = a4.sin() * radius4;
@@ -158,6 +160,7 @@ impl Scene {
             0,
             bytemuck::cast_slice(&self.dynamic_vertices[3]),
         );
+
 
         // planeta 3 -----------------------------------------------------------
         let radius4 = 60.0;
@@ -182,7 +185,7 @@ impl Scene {
 
         // planeta huevo  -----------------------------------------------------------
         let radius4 = 75.0;
-        let a4 = time * 0.09;
+        let a4 = time * 0.07;
 
         let ox5 = a4.cos() * radius4;
         let oz5 = a4.sin() * radius4;
@@ -199,6 +202,25 @@ impl Scene {
             &self.models[5].vb,
             0,
             bytemuck::cast_slice(&self.dynamic_vertices[5]),
+        );
+        let moon_radius = 10.0;     // distancia alrededor del huevo
+        let moon_speed = time * 0.4; // velocidad más alta
+
+        let moon_x = ox5 + moon_speed.cos() * moon_radius;
+        let moon_z = oz5 + moon_speed.sin() * moon_radius;
+
+        for (orig, dynv) in self.original_vertices[6]
+            .iter()
+            .zip(self.dynamic_vertices[6].iter_mut())
+        {
+            dynv.pos[0] = orig.pos[0] + moon_x;
+            dynv.pos[2] = orig.pos[2] + moon_z;
+        }
+
+        queue.write_buffer(
+            &self.models[6].vb,
+            0,
+            bytemuck::cast_slice(&self.dynamic_vertices[6]),
         );
     }
 }
