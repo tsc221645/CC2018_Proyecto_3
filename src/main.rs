@@ -51,7 +51,7 @@ async fn run() {
 
     let mut renderer = Renderer::new(&device, format).await;
     let mut cam = Camera::new();
-    let scene = Scene::load_models(&device);
+    let mut scene = Scene::load_models(&device);
 
     let mut time = 0.0f32;
     let mut last = std::time::Instant::now();
@@ -69,11 +69,12 @@ async fn run() {
                     mouse_delta += Vec2::new(delta.0 as f32, delta.1 as f32);
                 }
                 DeviceEvent::MouseWheel { delta } => {
+                    let zoom_speed = 0.15; 
                     let scroll = match delta {
-                        MouseScrollDelta::LineDelta(_, y) => y,
-                        MouseScrollDelta::PixelDelta(p) => p.y as f32 / 20.0,
+                        MouseScrollDelta::LineDelta(_, y) => y * zoom_speed,
+                        MouseScrollDelta::PixelDelta(p) => (p.y as f32) * zoom_speed,
                     };
-                    cam.radius = (cam.radius - scroll).clamp(3.0, 200.0);
+                    cam.radius = (cam.radius - scroll).clamp(3.0, 500.0);
                 }
                 _ => {}
             },
@@ -100,6 +101,8 @@ async fn run() {
                 let dt = (now - last).as_secs_f32();
                 last = now;
                 time += dt;
+                scene.update(time, &queue);
+
 
                 cam.update_from_input(dt, mouse_delta);
                 mouse_delta = Vec2::ZERO;
