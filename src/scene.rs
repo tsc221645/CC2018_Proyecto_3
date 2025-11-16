@@ -198,6 +198,7 @@ impl Scene {
             dynv.pos[2] = orig.pos[2] + oz5;
         }
 
+        //orbita de la luna en el planeta huevo
         queue.write_buffer(
             &self.models[5].vb,
             0,
