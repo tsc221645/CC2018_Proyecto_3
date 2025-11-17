@@ -5,12 +5,12 @@ use glam::Mat4;
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Globals {
-    pub view_proj: [[f32; 4]; 4], // 64 bytes
-    pub time: f32,                // +4
-    pub _pad0: [f32; 3],          // +12 => 80
-    pub _pad1: [f32; 4],          // +16 => 96
-    pub _pad2: [f32; 4],          // +16 => 112
-    pub _pad3: [f32; 4],          // +16 => 128  <-- EXTRA PADDING
+    pub view_proj: [[f32; 4]; 4],
+    pub time: f32,
+    pub _pad0: [f32; 3],
+    pub _pad1: [f32; 4],
+    pub _pad2: [f32; 4],
+    pub _pad3: [f32; 4],
 }
 
 pub struct Renderer {
@@ -18,10 +18,16 @@ pub struct Renderer {
     pub globals_bg: wgpu::BindGroup,
     pub pipeline: wgpu::RenderPipeline,
     pub orbit_pipeline: wgpu::RenderPipeline,
+    pub skybox_pipeline: wgpu::RenderPipeline,
+    pub dummy_texture: wgpu::TextureView,
+    pub dummy_sampler: wgpu::Sampler,
+    pub depth_texture: wgpu::TextureView,
+    pub skybox_vb: wgpu::Buffer,
+    pub skybox_ib: wgpu::Buffer,
 }
 
 impl Renderer {
-    pub async fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    pub async fn new(device: &wgpu::Device, format: wgpu::TextureFormat, width: u32, height: u32) -> Self {
         let globals_init = Globals {
             view_proj: Mat4::IDENTITY.to_cols_array_2d(),
             time: 0.0,
@@ -37,31 +43,71 @@ impl Renderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // Crear texturas dummy (placeholder)
+        let dummy_texture = Self::create_dummy_texture(device);
+        let dummy_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
+        // Crear depth texture
+        let depth_texture = Self::create_depth_texture(device, width, height);
+
         let globals_bg_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Globals Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
         });
 
         let globals_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &globals_bg_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: globals_buf.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: globals_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&dummy_texture),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&dummy_sampler),
+                },
+            ],
             label: Some("Globals BG"),
         });
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader_textured.wgsl"));
         let orbit_shader = device.create_shader_module(wgpu::include_wgsl!("shader_orbit.wgsl"));
+        let skybox_shader = device.create_shader_module(wgpu::include_wgsl!("shader_skybox.wgsl"));
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Pipeline Layout"),
@@ -89,7 +135,13 @@ impl Renderer {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
             cache: None,
@@ -118,13 +170,116 @@ impl Renderer {
                 topology: wgpu::PrimitiveTopology::LineStrip,
                 ..Default::default()
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
             cache: None,
         });
 
-        Self { globals_buf, globals_bg, pipeline, orbit_pipeline }
+        // Skybox pipeline (se dibuja primero, sin depth write pero con formato compatible)
+        let skybox_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Skybox Pipeline"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &skybox_shader,
+                entry_point: "vs_main",
+                buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &skybox_shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
+
+        // Crear buffers dummy para skybox
+        let skybox_vb = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Skybox VB"),
+            size: 0,
+            usage: wgpu::BufferUsages::VERTEX,
+            mapped_at_creation: false,
+        });
+
+        let skybox_ib = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Skybox IB"),
+            size: 0,
+            usage: wgpu::BufferUsages::INDEX,
+            mapped_at_creation: false,
+        });
+
+        Self {
+            globals_buf,
+            globals_bg,
+            pipeline,
+            orbit_pipeline,
+            skybox_pipeline,
+            dummy_texture,
+            dummy_sampler,
+            depth_texture,
+            skybox_vb,
+            skybox_ib,
+        }
+    }
+
+    fn create_dummy_texture(device: &wgpu::Device) -> wgpu::TextureView {
+        let size = wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Dummy Texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        texture.create_view(&wgpu::TextureViewDescriptor::default())
+    }
+
+    fn create_depth_texture(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureView {
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Depth Texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 
     pub fn draw_mesh<'a>(
@@ -139,6 +294,15 @@ impl Renderer {
         pass.set_vertex_buffer(0, vb.slice(..));
         pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
         pass.draw_indexed(0..ic, 0, 0..1);
+    }
+
+    pub fn draw_skybox<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+    ) {
+        pass.set_pipeline(&self.skybox_pipeline);
+        pass.set_bind_group(0, &self.globals_bg, &[]);
+        pass.draw(0..6, 0..1); // Dibuja 6 vértices para un fullscreen quad
     }
 
     pub fn draw_orbits<'a>(
@@ -157,6 +321,7 @@ impl Renderer {
                     pos: p.to_array(),
                     normal: [0.0; 3],
                     uv: [0.0; 2],
+                    planet_id: 0,
                 })
                 .collect();
 

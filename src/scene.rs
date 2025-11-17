@@ -11,6 +11,7 @@ pub struct GpuModel {
 pub struct Scene {
     pub models: Vec<GpuModel>,
     pub orbits: Vec<Vec<Vec3>>,
+    pub planet_positions: Vec<(Vec3, f32)>, // (posición, radio) de cada planeta
 
     // 🔥 movimiento dinámico
     original_vertices: Vec<Vec<Vertex>>,
@@ -21,27 +22,27 @@ impl Scene {
     pub fn load_models(device: &wgpu::Device) -> Self {
         let paths = [
             // 0
-            "src/models/sol.obj",
+            ("src/models/sol.obj", 0u32),
             // 1
-            "src/models/mini_planeta_1.obj",
+            ("src/models/mini_planeta_1.obj", 1u32),
             // 2
-            "src/models/nave.obj",
+            ("src/models/nave.obj", 2u32),
             //3
-            "src/models/mini_planeta_2.obj",
+            ("src/models/mini_planeta_2.obj", 3u32),
             //4
-            "src/models/mini_planeta_3.obj",
+            ("src/models/mini_planeta_3.obj", 4u32),
             //5
-            "src/models/huevo_planeta.obj",
+            ("src/models/huevo_planeta.obj", 5u32),
             //6
-            "src/models/luna.obj",
+            ("src/models/luna.obj", 6u32),
         ];
 
         let mut models = Vec::new();
         let mut original_vertices = Vec::new();
         let mut dynamic_vertices = Vec::new();
 
-        for (i, path) in paths.iter().enumerate() {
-            let (verts, inds) = load_obj(path);
+        for (i, (path, planet_id)) in paths.iter().enumerate() {
+            let (verts, inds) = load_obj(path, *planet_id);
 
             // guardamos copias para animación
             original_vertices.push(verts.clone());
@@ -78,6 +79,15 @@ impl Scene {
         Self {
             models,
             orbits,
+            planet_positions: vec![
+                (Vec3::ZERO, 5.0),           // Sol
+                (Vec3::ZERO, 1.5),           // Planeta 1
+                (Vec3::ZERO, 1.0),           // Nave
+                (Vec3::ZERO, 2.0),           // Planeta 2
+                (Vec3::ZERO, 2.5),           // Planeta 3
+                (Vec3::ZERO, 1.8),           // Planeta huevo
+                (Vec3::ZERO, 0.8),           // Luna
+            ],
             original_vertices,
             dynamic_vertices,
         }
@@ -109,6 +119,9 @@ impl Scene {
             dynv.pos[2] = orig.pos[2] + oz;
         }
 
+        // Actualizar posición para colisiones
+        self.planet_positions[1] = (Vec3::new(ox, 0.0, oz), 1.5);
+
         queue.write_buffer(
             &self.models[1].vb,
             0,
@@ -133,6 +146,9 @@ impl Scene {
             dynv.pos[2] = orig.pos[2] + oz2;
         }
 
+        // Actualizar posición para colisiones
+        self.planet_positions[2] = (Vec3::new(ox2, 0.0, oz2), 1.0);
+
         queue.write_buffer(
             &self.models[2].vb,
             0,
@@ -154,6 +170,9 @@ impl Scene {
             dynv.pos[0] = orig.pos[0] + ox3;
             dynv.pos[2] = orig.pos[2] + oz3;
         }
+
+        // Actualizar posición para colisiones
+        self.planet_positions[3] = (Vec3::new(ox3, 0.0, oz3), 2.0);
 
         queue.write_buffer(
             &self.models[3].vb,
@@ -177,6 +196,9 @@ impl Scene {
             dynv.pos[2] = orig.pos[2] + oz4;
         }
 
+        // Actualizar posición para colisiones
+        self.planet_positions[4] = (Vec3::new(ox4, 0.0, oz4), 2.5);
+
         queue.write_buffer(
             &self.models[4].vb,
             0,
@@ -198,6 +220,9 @@ impl Scene {
             dynv.pos[2] = orig.pos[2] + oz5;
         }
 
+        // Actualizar posición para colisiones
+        self.planet_positions[5] = (Vec3::new(ox5, 0.0, oz5), 1.8);
+
         //orbita de la luna en el planeta huevo
         queue.write_buffer(
             &self.models[5].vb,
@@ -217,6 +242,9 @@ impl Scene {
             dynv.pos[0] = orig.pos[0] + moon_x;
             dynv.pos[2] = orig.pos[2] + moon_z;
         }
+
+        // Actualizar posición para colisiones
+        self.planet_positions[6] = (Vec3::new(moon_x, 0.0, moon_z), 0.8);
 
         queue.write_buffer(
             &self.models[6].vb,

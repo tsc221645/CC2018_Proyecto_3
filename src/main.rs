@@ -12,6 +12,7 @@ use glam::Vec2;
 use renderer::{Renderer, Globals};
 use camera::Camera;
 use scene::Scene;
+use camera::CollisionSphere;
 
 fn main() {
     block_on(run());
@@ -37,7 +38,7 @@ async fn run() {
     let size = window.inner_size();
     let format = surface.get_capabilities(&adapter).formats[0];
 
-    let mut config = wgpu::SurfaceConfiguration {
+    let config = wgpu::SurfaceConfiguration {
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
         format,
         width: size.width,
@@ -49,7 +50,7 @@ async fn run() {
     };
     surface.configure(&device, &config);
 
-    let mut renderer = Renderer::new(&device, format).await;
+    let renderer = Renderer::new(&device, format, size.width, size.height).await;
     let mut cam = Camera::new();
     let mut scene = Scene::load_models(&device);
 
@@ -103,8 +104,13 @@ async fn run() {
                 time += dt;
                 scene.update(time, &queue);
 
+                // Convertir posiciones de planetas a esferas de colisión
+                let collision_spheres: Vec<CollisionSphere> = scene.planet_positions
+                    .iter()
+                    .map(|(pos, radius)| CollisionSphere { center: *pos, radius: *radius })
+                    .collect();
 
-                cam.update_from_input(dt, mouse_delta);
+                cam.update_from_input(dt, mouse_delta, &collision_spheres);
                 mouse_delta = Vec2::ZERO;
 
                 let frame = match surface.get_current_texture() {
@@ -124,7 +130,7 @@ async fn run() {
                     _pad0: [0.0; 3],
                     _pad1: [0.0; 4],
                     _pad2: [0.0; 4],
-                    _pad3: [0.0; 4], // 128 bytes
+                    _pad3: [0.0; 4],
                 };
                 queue.write_buffer(&renderer.globals_buf, 0, bytemuck::bytes_of(&globals));
 
@@ -139,18 +145,28 @@ async fn run() {
                             resolve_target: None,
                             ops: wgpu::Operations {
                                 load: wgpu::LoadOp::Clear(wgpu::Color {
-                                    r: 0.03,
-                                    g: 0.03,
-                                    b: 0.06,
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 0.0,
                                     a: 1.0,
                                 }),
                                 store: wgpu::StoreOp::Store,
                             },
                         })],
-                        depth_stencil_attachment: None,
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &renderer.depth_texture,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.0),
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: None,
+                        }),
                         timestamp_writes: None,
                         occlusion_query_set: None,
                     });
+
+                    /* ------ Dibujar skybox/fondo con estrellas ------ */
+                    renderer.draw_skybox(&mut pass);
 
                     /* ------ Dibujar planetas / modelos ------ */
                     for model in &scene.models {
