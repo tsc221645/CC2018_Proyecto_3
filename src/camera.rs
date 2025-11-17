@@ -1,7 +1,6 @@
 use glam::{Mat4, Vec3, Vec2};
-use winit::keyboard::{Key, NamedKey, PhysicalKey};
+use winit::keyboard::{Key, NamedKey};
 use winit::event::ElementState;
-use winit::event::KeyEvent;
 
 pub struct Camera {
     pub yaw: f32,
@@ -13,6 +12,12 @@ pub struct Camera {
     pub move_backward: bool,
     pub move_left: bool,
     pub move_right: bool,
+}
+
+// Estructura para representar esferas de colisión (planetas)
+pub struct CollisionSphere {
+    pub center: Vec3,
+    pub radius: f32,
 }
 
 impl Camera {
@@ -30,7 +35,7 @@ impl Camera {
         }
     }
 
-    pub fn update_from_input(&mut self, dt: f32, mouse_delta: Vec2) {
+    pub fn update_from_input(&mut self, dt: f32, mouse_delta: Vec2, planets: &[CollisionSphere]) {
         // --- Mouse look ---
         let sensitivity = 0.002;
         self.yaw -= mouse_delta.x * sensitivity;
@@ -58,7 +63,12 @@ impl Camera {
         }
 
         if dir.length() > 0.0 {
-            self.target += dir.normalize() * speed * dt;
+            let new_target = self.target + dir.normalize() * speed * dt;
+            
+            // Verificar colisiones antes de mover
+            if !self.check_collision(new_target, planets) {
+                self.target = new_target;
+            }
         }
     }
 
@@ -81,6 +91,21 @@ impl Camera {
 
             _ => {}
         }
+    }
+
+    // Detectar colisión con esferas (planetas)
+    fn check_collision(&self, new_target: Vec3, planets: &[CollisionSphere]) -> bool {
+        // Radio de colisión de la cámara
+        let camera_radius = 2.0;
+        
+        for planet in planets {
+            let dist_to_planet = new_target.distance(planet.center);
+            if dist_to_planet < (planet.radius + camera_radius) {
+                return true; // Colisión detectada
+            }
+        }
+        
+        false // Sin colisión
     }
 
     pub fn view_proj(&self, aspect: f32) -> Mat4 {
