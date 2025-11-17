@@ -21,27 +21,27 @@ impl Scene {
     pub fn load_models(device: &wgpu::Device) -> Self {
         let paths = [
             // 0
-            "src/models/sol.obj",
+            ("src/models/sol.obj", 0u32),
             // 1
-            "src/models/mini_planeta_1.obj",
+            ("src/models/mini_planeta_1.obj", 1u32),
             // 2
-            "src/models/nave.obj",
+            ("src/models/nave.obj", 2u32),
             //3
-            "src/models/mini_planeta_2.obj",
+            ("src/models/mini_planeta_2.obj", 3u32),
             //4
-            "src/models/mini_planeta_3.obj",
+            ("src/models/mini_planeta_3.obj", 4u32),
             //5
-            "src/models/huevo_planeta.obj",
+            ("src/models/huevo_planeta.obj", 5u32),
             //6
-            "src/models/luna.obj",
+            ("src/models/luna.obj", 6u32),
         ];
 
         let mut models = Vec::new();
         let mut original_vertices = Vec::new();
         let mut dynamic_vertices = Vec::new();
 
-        for (i, path) in paths.iter().enumerate() {
-            let (verts, inds) = load_obj(path);
+        for (i, (path, planet_id)) in paths.iter().enumerate() {
+            let (verts, inds) = load_obj(path, *planet_id);
 
             // guardamos copias para animación
             original_vertices.push(verts.clone());

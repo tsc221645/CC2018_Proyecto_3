@@ -5,12 +5,12 @@ use glam::Mat4;
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Globals {
-    pub view_proj: [[f32; 4]; 4], // 64 bytes
-    pub time: f32,                // +4
-    pub _pad0: [f32; 3],          // +12 => 80
-    pub _pad1: [f32; 4],          // +16 => 96
-    pub _pad2: [f32; 4],          // +16 => 112
-    pub _pad3: [f32; 4],          // +16 => 128  <-- EXTRA PADDING
+    pub view_proj: [[f32; 4]; 4],
+    pub time: f32,
+    pub _pad0: [f32; 3],
+    pub _pad1: [f32; 4],
+    pub _pad2: [f32; 4],
+    pub _pad3: [f32; 4],
 }
 
 pub struct Renderer {
@@ -18,6 +18,8 @@ pub struct Renderer {
     pub globals_bg: wgpu::BindGroup,
     pub pipeline: wgpu::RenderPipeline,
     pub orbit_pipeline: wgpu::RenderPipeline,
+    pub dummy_texture: wgpu::TextureView,
+    pub dummy_sampler: wgpu::Sampler,
 }
 
 impl Renderer {
@@ -37,26 +39,62 @@ impl Renderer {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // Crear texturas dummy (placeholder)
+        let dummy_texture = Self::create_dummy_texture(device);
+        let dummy_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+
         let globals_bg_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Globals Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
         });
 
         let globals_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &globals_bg_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: globals_buf.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: globals_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&dummy_texture),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&dummy_sampler),
+                },
+            ],
             label: Some("Globals BG"),
         });
 
@@ -124,7 +162,33 @@ impl Renderer {
             cache: None,
         });
 
-        Self { globals_buf, globals_bg, pipeline, orbit_pipeline }
+        Self {
+            globals_buf,
+            globals_bg,
+            pipeline,
+            orbit_pipeline,
+            dummy_texture,
+            dummy_sampler,
+        }
+    }
+
+    fn create_dummy_texture(device: &wgpu::Device) -> wgpu::TextureView {
+        let size = wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Dummy Texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        texture.create_view(&wgpu::TextureViewDescriptor::default())
     }
 
     pub fn draw_mesh<'a>(
@@ -157,6 +221,7 @@ impl Renderer {
                     pos: p.to_array(),
                     normal: [0.0; 3],
                     uv: [0.0; 2],
+                    planet_id: 0, // Las órbitas no necesitan un planeta específico
                 })
                 .collect();
 

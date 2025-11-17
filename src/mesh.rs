@@ -6,6 +6,7 @@ pub struct Vertex {
     pub pos: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
+    pub planet_id: u32, // NUEVO: ID del planeta
 }
 
 impl Vertex {
@@ -14,13 +15,16 @@ impl Vertex {
             array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: Box::leak(Box::new(wgpu::vertex_attr_array![
-                0 => Float32x3, 1 => Float32x3, 2 => Float32x2
+                0 => Float32x3,  // pos
+                1 => Float32x3,  // normal
+                2 => Float32x2,  // uv
+                3 => Uint32      // planet_id
             ])),
         }
     }
 }
 
-pub fn load_obj(path: &str) -> (Vec<Vertex>, Vec<u32>) {
+pub fn load_obj(path: &str, planet_id: u32) -> (Vec<Vertex>, Vec<u32>) {
     let (models, _) = tobj::load_obj(path, &tobj::LoadOptions {
         triangulate: true,
         single_index: true,
@@ -62,7 +66,12 @@ pub fn load_obj(path: &str) -> (Vec<Vertex>, Vec<u32>) {
             [0.0, 0.0]
         };
 
-        vertices.push(Vertex { pos: p, normal: n, uv });
+        vertices.push(Vertex {
+            pos: p,
+            normal: n,
+            uv,
+            planet_id, // Asignamos el ID del planeta a cada vértice
+        });
     }
 
     (vertices, mesh.indices.clone())
