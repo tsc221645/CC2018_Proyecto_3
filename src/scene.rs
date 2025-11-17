@@ -12,6 +12,8 @@ pub struct Scene {
     pub models: Vec<GpuModel>,
     pub orbits: Vec<Vec<Vec3>>,
     pub planet_positions: Vec<(Vec3, f32)>, // (posición, radio) de cada planeta
+    pub player_ship_pos: Vec3, // Posición de la nave del jugador
+    pub player_ship_rot: (f32, f32), // (yaw, pitch) de la nave del jugador
 
     // 🔥 movimiento dinámico
     original_vertices: Vec<Vec<Vertex>>,
@@ -88,6 +90,8 @@ impl Scene {
                 (Vec3::ZERO, 1.8),           // Planeta huevo
                 (Vec3::ZERO, 0.8),           // Luna
             ],
+            player_ship_pos: Vec3::new(50.0, 0.0, 0.0),
+            player_ship_rot: (0.0, 0.0),
             original_vertices,
             dynamic_vertices,
         }

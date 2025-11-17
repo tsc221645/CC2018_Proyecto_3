@@ -12,6 +12,17 @@ pub struct Camera {
     pub move_backward: bool,
     pub move_left: bool,
     pub move_right: bool,
+    
+    // Control de nave del jugador
+    pub ship_move_forward: bool,
+    pub ship_move_backward: bool,
+    pub ship_turn_left: bool,
+    pub ship_turn_right: bool,
+    pub ship_turn_up: bool,
+    pub ship_turn_down: bool,
+    
+    // Modo de vista
+    pub ship_view: bool, // true = vista de nave, false = vista libre
 }
 
 // Estructura para representar esferas de colisión (planetas)
@@ -32,6 +43,15 @@ impl Camera {
             move_backward: false,
             move_left: false,
             move_right: false,
+            
+            ship_move_forward: false,
+            ship_move_backward: false,
+            ship_turn_left: false,
+            ship_turn_right: false,
+            ship_turn_up: false,
+            ship_turn_down: false,
+            
+            ship_view: false,
         }
     }
 
@@ -81,13 +101,14 @@ impl Camera {
                 "s" | "S" => self.move_backward = pressed,
                 "a" | "A" => self.move_left = pressed,
                 "d" | "D" => self.move_right = pressed,
+                "v" | "V" => if pressed { self.ship_view = !self.ship_view }, // Cambiar vista con V
                 _ => {}
             },
 
-            Key::Named(NamedKey::ArrowUp) => self.move_forward = pressed,
-            Key::Named(NamedKey::ArrowDown) => self.move_backward = pressed,
-            Key::Named(NamedKey::ArrowLeft) => self.move_left = pressed,
-            Key::Named(NamedKey::ArrowRight) => self.move_right = pressed,
+            Key::Named(NamedKey::ArrowUp) => self.ship_turn_up = pressed,
+            Key::Named(NamedKey::ArrowDown) => self.ship_turn_down = pressed,
+            Key::Named(NamedKey::ArrowLeft) => self.ship_turn_left = pressed,
+            Key::Named(NamedKey::ArrowRight) => self.ship_turn_right = pressed,
 
             _ => {}
         }
@@ -119,5 +140,66 @@ impl Camera {
         let proj = Mat4::perspective_rh(45_f32.to_radians(), aspect, 0.1, 5000.0);
 
         proj * view
+    }
+
+    // Obtener posición de los ojos de la cámara
+    pub fn get_eye_pos(&self) -> Vec3 {
+        Vec3::new(
+            self.target.x + self.radius * self.yaw.cos() * self.pitch.cos(),
+            self.target.y + self.radius * self.pitch.sin(),
+            self.target.z + self.radius * self.yaw.sin() * self.pitch.cos(),
+        )
+    }
+
+    // Vista en primera persona desde la nave
+    pub fn view_proj_from_ship(&self, ship_pos: Vec3, ship_rot: (f32, f32), aspect: f32) -> Mat4 {
+        let offset_distance = 3.0;
+        
+        // Crear dirección hacia atrás basada en rotación de nave
+        let backward = Vec3::new(
+            ship_rot.0.cos() * ship_rot.1.cos(),
+            ship_rot.1.sin(),
+            ship_rot.0.sin() * ship_rot.1.cos(),
+        );
+        
+        // Posición de la cámara: detrás de la nave
+        let eye = ship_pos - backward * offset_distance + Vec3::new(0.0, 1.0, 0.0);
+        
+        // La cámara mira hacia adelante de la nave
+        let target = ship_pos + backward * 100.0;
+        
+        let view = Mat4::look_at_rh(eye, target, Vec3::Y);
+        let proj = Mat4::perspective_rh(45_f32.to_radians(), aspect, 0.1, 5000.0);
+
+        proj * view
+    }
+
+    // Actualizar la nave del jugador basándose en rotación de flechas
+    pub fn update_player_ship(&self, dt: f32, ship_pos: &mut Vec3, ship_rot: &mut (f32, f32)) {
+        let ship_speed = 40.0;
+        let rotation_speed = 2.0;
+
+        // Rotar nave
+        if self.ship_turn_left {
+            ship_rot.0 += rotation_speed * dt;
+        }
+        if self.ship_turn_right {
+            ship_rot.0 -= rotation_speed * dt;
+        }
+        if self.ship_turn_up {
+            ship_rot.1 = (ship_rot.1 + rotation_speed * dt).min(std::f32::consts::FRAC_PI_2);
+        }
+        if self.ship_turn_down {
+            ship_rot.1 = (ship_rot.1 - rotation_speed * dt).max(-std::f32::consts::FRAC_PI_2);
+        }
+
+        // Mover nave en dirección de rotación
+        let forward = Vec3::new(
+            ship_rot.0.cos() * ship_rot.1.cos(),
+            ship_rot.1.sin(),
+            ship_rot.0.sin() * ship_rot.1.cos(),
+        );
+
+        *ship_pos += forward * ship_speed * dt;
     }
 }

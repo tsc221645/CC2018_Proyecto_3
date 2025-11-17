@@ -4,15 +4,18 @@ mod mesh;
 mod orbit;
 mod scene;
 mod procedural_texture;
+mod spaceship;
 
 use std::sync::Arc;
 use winit::{event::*, event_loop::EventLoop};
 use pollster::block_on;
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use renderer::{Renderer, Globals};
 use camera::Camera;
 use scene::Scene;
 use camera::CollisionSphere;
+use spaceship::generate_spaceship;
+use wgpu::util::DeviceExt;
 
 fn main() {
     block_on(run());
@@ -53,6 +56,20 @@ async fn run() {
     let renderer = Renderer::new(&device, format, size.width, size.height).await;
     let mut cam = Camera::new();
     let mut scene = Scene::load_models(&device);
+
+    // Crear nave procedural del jugador
+    let (player_ship_verts, player_ship_inds) = generate_spaceship();
+    let player_ship_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Player Ship VB"),
+        contents: bytemuck::cast_slice(&player_ship_verts),
+        usage: wgpu::BufferUsages::VERTEX,
+    });
+    let player_ship_ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("Player Ship IB"),
+        contents: bytemuck::cast_slice(&player_ship_inds),
+        usage: wgpu::BufferUsages::INDEX,
+    });
+    let player_ship_icount = player_ship_inds.len() as u32;
 
     let mut time = 0.0f32;
     let mut last = std::time::Instant::now();
@@ -104,6 +121,9 @@ async fn run() {
                 time += dt;
                 scene.update(time, &queue);
 
+                // Actualizar nave del jugador
+                cam.update_player_ship(dt, &mut scene.player_ship_pos, &mut scene.player_ship_rot);
+
                 // Convertir posiciones de planetas a esferas de colisión
                 let collision_spheres: Vec<CollisionSphere> = scene.planet_positions
                     .iter()
@@ -125,7 +145,11 @@ async fn run() {
                 let aspect = config.width as f32 / config.height as f32;
 
                 let globals = Globals {
-                    view_proj: cam.view_proj(aspect).to_cols_array_2d(),
+                    view_proj: if cam.ship_view {
+                        cam.view_proj_from_ship(scene.player_ship_pos, scene.player_ship_rot, aspect).to_cols_array_2d()
+                    } else {
+                        cam.view_proj(aspect).to_cols_array_2d()
+                    },
                     time,
                     _pad0: [0.0; 3],
                     _pad1: [0.0; 4],
@@ -133,6 +157,15 @@ async fn run() {
                     _pad3: [0.0; 4],
                 };
                 queue.write_buffer(&renderer.globals_buf, 0, bytemuck::bytes_of(&globals));
+
+                // Actualizar posición de la nave en la cámara (la nave sigue a la cámara)
+                let camera_offset = Vec3::new(0.0, 0.0, 15.0); // Offset detrás de la cámara
+                let eye = Vec3::new(
+                    cam.target.x + cam.radius * cam.yaw.cos() * cam.pitch.cos(),
+                    cam.target.y + cam.radius * cam.pitch.sin(),
+                    cam.target.z + cam.radius * cam.yaw.sin() * cam.pitch.cos(),
+                );
+                let follow_ship_pos = eye - camera_offset;
 
                 let mut encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -172,6 +205,12 @@ async fn run() {
                     for model in &scene.models {
                         renderer.draw_mesh(&mut pass, &model.vb, &model.ib, model.icount);
                     }
+                    
+                    /* ------ Dibujar nave del jugador (controlada por flechas) ------ */
+                    renderer.draw_player_ship(&mut pass, &player_ship_vb, &player_ship_ib, player_ship_icount);
+                    
+                    /* ------ Dibujar nave que sigue a la cámara ------ */
+                    // TODO: Implementar transformación de posición/rotación en shader o CPU
 
                     /* ------ Dibujar órbitas ------ */
                     renderer.draw_orbits(&mut pass, &device, &scene.orbits);
