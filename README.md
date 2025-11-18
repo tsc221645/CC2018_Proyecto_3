@@ -10,7 +10,7 @@ El proyecto consiste en realizar una simulación del sistema solar utilizando un
 + wgpu 
 
 ### Video demostrativo
-
+[video en YouTube](https://youtu.be/uIC1GKmhMZk)
 
 ### Capturas de pantalla
 Primera version del render
