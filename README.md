@@ -26,4 +26,8 @@ Segunda version del render
 Tercera version del render
 
 
-![alt text](image-2.png)
+![alt text](image-2.png) ![alt text](image-3.png)
+
+
+Cuarta version del render
+![alt text](image-4.png)

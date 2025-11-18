@@ -35,10 +35,33 @@ struct VSOut {
 
 // Funciones de color procedural para cada planeta
 fn sun_color(uv: vec2<f32>) -> vec3<f32> {
-    let r = length(uv - vec2<f32>(0.5));
-    let f = max(0.0, 1.0 - r * 2.0);
-    return vec3<f32>(1.0 * f, 0.7 * f, 0.23 * f);
+    // Coordenadas centradas
+    let p = (uv - vec2<f32>(0.5)) * 2.0;
+    let r = length(p);
+
+    // Brillo central fuertísimo
+    let core = 1.5 * max(0.0, 1.0 - r * 1.2);
+
+    // “Plasma” animado
+    let t = globals.time * 1.5;
+    let wave1 = sin(p.x * 10.0 + t) * 0.4;
+    let wave2 = sin(p.y * 12.0 + t * 1.3) * 0.4;
+    let wave3 = sin((p.x + p.y) * 8.0 + t * 0.7) * 0.3;
+
+    let plasma = (wave1 + wave2 + wave3) * (1.0 - r);
+
+    // Corona externa (glow)
+    let corona = exp(-(r * 3.0)) * 0.8;
+
+    // Color base cálido
+    let base = vec3<f32>(1.0, 0.55, 0.15);
+
+    // Mezcla final (más brillante hacia el centro)
+    let intensity = core + plasma + corona;
+
+    return base * intensity;
 }
+
 
 fn rock_planet_color(uv: vec2<f32>) -> vec3<f32> {
     let pattern = sin(uv.x * 15.0) * cos(uv.y * 15.0);
@@ -105,10 +128,13 @@ fn get_planet_color(planet_id: u32, uv: vec2<f32>) -> vec3<f32> {
     // El sol no necesita iluminación, otros sí
     var final_color: vec3<f32>;
     if (in.planet_id == 0u) {
-        final_color = color; // Sol brilla por sí solo
+    
+        final_color = color * 1.8;
     } else {
+        // Otros planetas sí reciben luz
         final_color = color * (0.3 + diff * 0.7);
     }
-    
+
+        
     return vec4<f32>(final_color, 1.0);
 }

@@ -4,7 +4,6 @@ mod mesh;
 mod orbit;
 mod scene;
 mod procedural_texture;
-mod spaceship;
 
 use std::sync::Arc;
 use winit::{event::*, event_loop::EventLoop};
@@ -14,7 +13,6 @@ use renderer::{Renderer, Globals};
 use camera::Camera;
 use scene::Scene;
 use camera::CollisionSphere;
-use spaceship::generate_spaceship;
 use wgpu::util::DeviceExt;
 
 fn main() {
@@ -57,20 +55,6 @@ async fn run() {
     let mut cam = Camera::new();
     let mut scene = Scene::load_models(&device);
 
-    // Crear nave procedural del jugador
-    let (player_ship_verts, player_ship_inds) = generate_spaceship();
-    let player_ship_vb = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Player Ship VB"),
-        contents: bytemuck::cast_slice(&player_ship_verts),
-        usage: wgpu::BufferUsages::VERTEX,
-    });
-    let player_ship_ib = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("Player Ship IB"),
-        contents: bytemuck::cast_slice(&player_ship_inds),
-        usage: wgpu::BufferUsages::INDEX,
-    });
-    let player_ship_icount = player_ship_inds.len() as u32;
-
     let mut time = 0.0f32;
     let mut last = std::time::Instant::now();
     let mut mouse_delta = Vec2::ZERO;
@@ -108,6 +92,14 @@ async fn run() {
             /* ---------- Pedimos redibujar continuamente ---------- */
             Event::AboutToWait => {
                 window.clone().request_redraw();
+                
+                // Actualizar título de ventana para mostrar modo
+                let title = if cam.ship_view {
+                    "Space Travel - Vista nave (V para cambiar)"
+                } else {
+                    "Space Travel - Vista libre (V para cambiar)"
+                };
+                window.set_title(title);
             }
 
             /* ---------- Render ---------- */
@@ -121,8 +113,8 @@ async fn run() {
                 time += dt;
                 scene.update(time, &queue);
 
-                // Actualizar nave del jugador
-                cam.update_player_ship(dt, &mut scene.player_ship_pos, &mut scene.player_ship_rot);
+                // Actualizar rotación de la nave en órbita con flechas
+                cam.update_player_ship(dt, mouse_delta, &mut scene.planet_positions[2].0, &mut scene.ship_rot);
 
                 // Convertir posiciones de planetas a esferas de colisión
                 let collision_spheres: Vec<CollisionSphere> = scene.planet_positions
@@ -146,7 +138,7 @@ async fn run() {
 
                 let globals = Globals {
                     view_proj: if cam.ship_view {
-                        cam.view_proj_from_ship(scene.player_ship_pos, scene.player_ship_rot, aspect).to_cols_array_2d()
+                        cam.view_proj_from_ship(scene.planet_positions[2].0, scene.ship_rot, aspect).to_cols_array_2d()
                     } else {
                         cam.view_proj(aspect).to_cols_array_2d()
                     },
@@ -205,12 +197,6 @@ async fn run() {
                     for model in &scene.models {
                         renderer.draw_mesh(&mut pass, &model.vb, &model.ib, model.icount);
                     }
-                    
-                    /* ------ Dibujar nave del jugador (controlada por flechas) ------ */
-                    renderer.draw_player_ship(&mut pass, &player_ship_vb, &player_ship_ib, player_ship_icount);
-                    
-                    /* ------ Dibujar nave que sigue a la cámara ------ */
-                    // TODO: Implementar transformación de posición/rotación en shader o CPU
 
                     /* ------ Dibujar órbitas ------ */
                     renderer.draw_orbits(&mut pass, &device, &scene.orbits);
