@@ -296,6 +296,20 @@ impl Renderer {
         pass.draw_indexed(0..ic, 0, 0..1);
     }
 
+    pub fn draw_player_ship<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        vb: &'a wgpu::Buffer,
+        ib: &'a wgpu::Buffer,
+        ic: u32,
+    ) {
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.globals_bg, &[]);
+        pass.set_vertex_buffer(0, vb.slice(..));
+        pass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+        pass.draw_indexed(0..ic, 0, 0..1);
+    }
+
     pub fn draw_skybox<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,

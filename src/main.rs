@@ -8,11 +8,12 @@ mod procedural_texture;
 use std::sync::Arc;
 use winit::{event::*, event_loop::EventLoop};
 use pollster::block_on;
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use renderer::{Renderer, Globals};
 use camera::Camera;
 use scene::Scene;
 use camera::CollisionSphere;
+use wgpu::util::DeviceExt;
 
 fn main() {
     block_on(run());
@@ -91,6 +92,14 @@ async fn run() {
             /* ---------- Pedimos redibujar continuamente ---------- */
             Event::AboutToWait => {
                 window.clone().request_redraw();
+                
+                // Actualizar título de ventana para mostrar modo
+                let title = if cam.ship_view {
+                    "Space Travel - Vista nave (V para cambiar)"
+                } else {
+                    "Space Travel - Vista libre (V para cambiar)"
+                };
+                window.set_title(title);
             }
 
             /* ---------- Render ---------- */
@@ -103,6 +112,9 @@ async fn run() {
                 last = now;
                 time += dt;
                 scene.update(time, &queue);
+
+                // Actualizar rotación de la nave en órbita con flechas
+                cam.update_player_ship(dt, mouse_delta, &mut scene.planet_positions[2].0, &mut scene.ship_rot);
 
                 // Convertir posiciones de planetas a esferas de colisión
                 let collision_spheres: Vec<CollisionSphere> = scene.planet_positions
@@ -125,7 +137,11 @@ async fn run() {
                 let aspect = config.width as f32 / config.height as f32;
 
                 let globals = Globals {
-                    view_proj: cam.view_proj(aspect).to_cols_array_2d(),
+                    view_proj: if cam.ship_view {
+                        cam.view_proj_from_ship(scene.planet_positions[2].0, scene.ship_rot, aspect).to_cols_array_2d()
+                    } else {
+                        cam.view_proj(aspect).to_cols_array_2d()
+                    },
                     time,
                     _pad0: [0.0; 3],
                     _pad1: [0.0; 4],
@@ -133,6 +149,15 @@ async fn run() {
                     _pad3: [0.0; 4],
                 };
                 queue.write_buffer(&renderer.globals_buf, 0, bytemuck::bytes_of(&globals));
+
+                // Actualizar posición de la nave en la cámara (la nave sigue a la cámara)
+                let camera_offset = Vec3::new(0.0, 0.0, 15.0); // Offset detrás de la cámara
+                let eye = Vec3::new(
+                    cam.target.x + cam.radius * cam.yaw.cos() * cam.pitch.cos(),
+                    cam.target.y + cam.radius * cam.pitch.sin(),
+                    cam.target.z + cam.radius * cam.yaw.sin() * cam.pitch.cos(),
+                );
+                let follow_ship_pos = eye - camera_offset;
 
                 let mut encoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });

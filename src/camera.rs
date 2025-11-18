@@ -12,9 +12,15 @@ pub struct Camera {
     pub move_backward: bool,
     pub move_left: bool,
     pub move_right: bool,
+    
+    pub ship_turn_left: bool,
+    pub ship_turn_right: bool,
+    pub ship_turn_up: bool,
+    pub ship_turn_down: bool,
+    
+    pub ship_view: bool,
 }
 
-// Estructura para representar esferas de colisión (planetas)
 pub struct CollisionSphere {
     pub center: Vec3,
     pub radius: f32,
@@ -32,18 +38,29 @@ impl Camera {
             move_backward: false,
             move_left: false,
             move_right: false,
+            
+            ship_turn_left: false,
+            ship_turn_right: false,
+            ship_turn_up: false,
+            ship_turn_down: false,
+            
+            ship_view: false,
         }
     }
 
     pub fn update_from_input(&mut self, dt: f32, mouse_delta: Vec2, planets: &[CollisionSphere]) {
-        // --- Mouse look ---
         let sensitivity = 0.002;
-        self.yaw -= mouse_delta.x * sensitivity;
-        self.pitch -= mouse_delta.y * sensitivity;
+        
+        // En vista de nave, el mouse controla la rotación de la nave
+        if self.ship_view {
+            self.ship_rot_from_mouse(dt, mouse_delta);
+        } else {
+            // En vista libre, el mouse controla la cámara
+            self.yaw -= mouse_delta.x * sensitivity;
+            self.pitch -= mouse_delta.y * sensitivity;
+            self.pitch = self.pitch.clamp(-1.4, 1.4);
+        }
 
-        self.pitch = self.pitch.clamp(-1.4, 1.4);
-
-        // --- WASD movement ---
         let mut dir = Vec3::ZERO;
         let speed = 10.0;
 
@@ -64,12 +81,17 @@ impl Camera {
 
         if dir.length() > 0.0 {
             let new_target = self.target + dir.normalize() * speed * dt;
-            
-            // Verificar colisiones antes de mover
             if !self.check_collision(new_target, planets) {
                 self.target = new_target;
             }
         }
+    }
+
+    fn ship_rot_from_mouse(&mut self, dt: f32, mouse_delta: Vec2) {
+        let mouse_sensitivity = 0.003;
+        // Usar ship_turn_* como flags temporales para aplicar rotación
+        // En su lugar, aplicaremos directamente desde mouse_delta
+        // Esto se hará en update_player_ship
     }
 
     pub fn process_key(&mut self, key: &Key, state: ElementState) {
@@ -81,31 +103,41 @@ impl Camera {
                 "s" | "S" => self.move_backward = pressed,
                 "a" | "A" => self.move_left = pressed,
                 "d" | "D" => self.move_right = pressed,
+                "v" | "V" => if pressed { 
+                    self.ship_view = !self.ship_view;
+                    println!("Vista de nave: {}", if self.ship_view { "ACTIVADA" } else { "DESACTIVADA" });
+                },
                 _ => {}
             },
 
-            Key::Named(NamedKey::ArrowUp) => self.move_forward = pressed,
-            Key::Named(NamedKey::ArrowDown) => self.move_backward = pressed,
-            Key::Named(NamedKey::ArrowLeft) => self.move_left = pressed,
-            Key::Named(NamedKey::ArrowRight) => self.move_right = pressed,
+            Key::Named(NamedKey::ArrowUp) => {
+                self.ship_turn_up = pressed;
+            },
+            Key::Named(NamedKey::ArrowDown) => {
+                self.ship_turn_down = pressed;
+            },
+            Key::Named(NamedKey::ArrowLeft) => {
+                self.ship_turn_left = pressed;
+            },
+            Key::Named(NamedKey::ArrowRight) => {
+                self.ship_turn_right = pressed;
+            },
 
             _ => {}
         }
     }
 
-    // Detectar colisión con esferas (planetas)
     fn check_collision(&self, new_target: Vec3, planets: &[CollisionSphere]) -> bool {
-        // Radio de colisión de la cámara
         let camera_radius = 2.0;
         
         for planet in planets {
             let dist_to_planet = new_target.distance(planet.center);
             if dist_to_planet < (planet.radius + camera_radius) {
-                return true; // Colisión detectada
+                return true;
             }
         }
         
-        false // Sin colisión
+        false
     }
 
     pub fn view_proj(&self, aspect: f32) -> Mat4 {
@@ -119,5 +151,59 @@ impl Camera {
         let proj = Mat4::perspective_rh(45_f32.to_radians(), aspect, 0.1, 5000.0);
 
         proj * view
+    }
+
+    pub fn view_proj_from_ship(&self, ship_pos: Vec3, ship_rot: (f32, f32), aspect: f32) -> Mat4 {
+        // Vista en primera persona desde la nave
+        let eye = ship_pos + Vec3::new(0.0, 0.5, 0.0);
+        
+        // Dirección en la que apunta la nave (basada en rotación)
+        let forward = Vec3::new(
+            ship_rot.0.cos() * ship_rot.1.cos(),
+            ship_rot.1.sin(),
+            ship_rot.0.sin() * ship_rot.1.cos(),
+        );
+        
+        let target = eye + forward * 1000.0;
+        
+        let view = Mat4::look_at_rh(eye, target, Vec3::Y);
+        let proj = Mat4::perspective_rh(60_f32.to_radians(), aspect, 0.1, 10000.0);
+
+        proj * view
+    }
+
+    pub fn update_player_ship(&self, dt: f32, mouse_delta: Vec2, ship_pos: &mut Vec3, ship_rot: &mut (f32, f32)) {
+        let ship_speed = 40.0;
+        let rotation_speed = 2.0;
+        let mouse_sensitivity = 0.003;
+
+        // Controlar rotación con mouse si estamos en vista de nave
+        if self.ship_view {
+            ship_rot.0 -= mouse_delta.x * mouse_sensitivity;
+            ship_rot.1 -= mouse_delta.y * mouse_sensitivity;
+            ship_rot.1 = ship_rot.1.clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
+        } else {
+            // Controlar rotación con flechas en vista libre
+            if self.ship_turn_left {
+                ship_rot.0 += rotation_speed * dt;
+            }
+            if self.ship_turn_right {
+                ship_rot.0 -= rotation_speed * dt;
+            }
+            if self.ship_turn_up {
+                ship_rot.1 = (ship_rot.1 + rotation_speed * dt).min(std::f32::consts::FRAC_PI_2);
+            }
+            if self.ship_turn_down {
+                ship_rot.1 = (ship_rot.1 - rotation_speed * dt).max(-std::f32::consts::FRAC_PI_2);
+            }
+        }
+
+        let forward = Vec3::new(
+            ship_rot.0.cos() * ship_rot.1.cos(),
+            ship_rot.1.sin(),
+            ship_rot.0.sin() * ship_rot.1.cos(),
+        );
+
+        *ship_pos += forward * ship_speed * dt;
     }
 }
